@@ -3,10 +3,28 @@
 // Bobbi Webber-Manners
 // Sept 2024
 //
+// Emulation ONLY of the parts necessary for Mockingboard, which is basically
+// input and output from Port A and Port B, timer 1 and timer 2.
+// - CB1/CB2 are not connected, so no need to emulate the 6522 shift register,
+//   which only connects to these pins. There is also no need to implement
+//   read or write handshaking for port B.
+// - Pins PB3-PB7 are not connected. Hence there is no need to support the 
+//   timer 1 PB7 output mode or the timer 2 PB6 pulse counting mode.
+// - CA2 is also not connected. (If an SSI-263 chip is installed the A/R'
+//   output (pin 4) goes to CA1 to signal that the SSI is ready for another
+//   phoneme.  Otherwise CA1 is also not connected.
+// - In the first instance we will assume no SSI-263 speech chip, but this may
+//   be added later.
+// - So we don't need read or write handshaing on port A either for now, and
+//   we will completely ignore VIAREG_PCR since no CA1/2,CB1/2. Will
+//   need to implement the CA1 support when we add SSI capability later on.
+// - 
+
 
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 // VIA Register names
 #define VIAREG_ORB  0   // Output register B
@@ -33,8 +51,14 @@
 typedef struct {
   uint8_t regs[16];
 
-  uint8_t port_a;
-  uint8_t port_b;
+  uint8_t port_a; // Mockingboard: Connects to/from AY-3-8913 databus (DA0..DA7)
+  uint8_t port_b; // Mockingboard: 3 bits to AY-3-8913 (PB0-BC1, PB1-BDIR, PB2-RESET)
+  bool    ca1;    // Mockingboard: Only used if SSI-263 speech chip installed (A/R')
+  bool    ca2;    // Mockingboard: Not used
+  bool    cb1;    // Mockingboard: Not used
+  bool    cb2;    // Mockingboard: Not used
+  bool    irqb;   // Mockingboard: Connects to Apple II IRQ
+  
 } via_state;
 
 via_state *create_via();
