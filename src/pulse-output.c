@@ -90,9 +90,6 @@ int main(int argc, char*argv[]) {
     show_ay3_regs(ay3);
  
     for (;;) {
-        uint8_t buf[BUFSIZE];
-        ssize_t r;
- 
 #if 0
         pa_usec_t latency;
  
