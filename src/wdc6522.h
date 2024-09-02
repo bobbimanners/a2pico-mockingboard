@@ -15,7 +15,7 @@
 //   phoneme.  Otherwise CA1 is also not connected.
 // - In the first instance we will assume no SSI-263 speech chip, but this may
 //   be added later.
-// - So we don't need read or write handshaing on port A either for now, and
+// - So we don't need read or write handshaking on port A either for now, and
 //   we will completely ignore VIAREG_PCR since no CA1/2,CB1/2. Will
 //   need to implement the CA1 support when we add SSI capability later on.
 // - 

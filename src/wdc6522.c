@@ -171,6 +171,7 @@ void via_clk(via_state *h) {
 // Handles one-shot and continuous mode
 void via_timer1_expire(via_state *h) {
 
+  // Bit 6 of the Aux Control Register determines mode
   // If we are in continuous mode, rearm the timer
   if (h->regs[VIAREG_ACR] & 0x40) {
     // Copy latch->counter
@@ -178,10 +179,9 @@ void via_timer1_expire(via_state *h) {
     h->regs[VIAREG_T1CH] = h->regs[VIAREG_T1LH];
   }
 
-  // Bit 6 of the Aux Control Register determines mode
-  // If we are in continuous mode, OR if the interrupt flag is not asserted yet
+  // If we are in continuous mode, OR if the Timer 1 interrupt flag has not yet been asserted
   if ((h->regs[VIAREG_ACR] & 0x40) || ((h->regs[VIAREG_IFR] & 0x40) == 0)) {
-    // Set T1 interrupt flag.
+    // Set Timer 1 interrupt flag.
     h->regs[VIAREG_IFR] |= 0x40; // Turn on bit 6
     h->regs[VIAREG_IFR] |= 0x80; // Turn on bit 7 (any interrupt)
     // If Interrupt Enable Register Bit 6 is set, then assert the interrupt
@@ -195,9 +195,9 @@ void via_timer1_expire(via_state *h) {
 // NOTE: We do not support pulse-counting mode, because PB6 is not utilized.
 //       So there is only one-shot mode to consider for timer 2.
 void via_timer2_expire(via_state *h) {
-  // If the interrupt flag is not asserted yet
+  // If the Timer 2 interrupt flag is not asserted yet
   if ((h->regs[VIAREG_IFR] & 0x20) == 0) {
-    // Set T1 interrupt flag.
+    // Set Timer 2 interrupt flag.
     h->regs[VIAREG_IFR] |= 0x20; // Turn on bit 5
     h->regs[VIAREG_IFR] |= 0x80; // Turn on bit 7 (any interrupt)
     // If Interrupt Enable Register Bit 5 is set, then assert the interrupt
