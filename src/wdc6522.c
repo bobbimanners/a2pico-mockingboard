@@ -15,6 +15,9 @@ via_state *create_via() {
     exit(999);
   }
   h->port_a = h->port_b = 0;
+  h->regs[VIAREG_IER] = 128; // Disable all interrupts
+  h->regs[VIAREG_IFR] = 0;   // Clear all interrupt flags
+  h->regs[VIAREG_ACR] = 0;   // Clear Aux Control Register
   return h;
 }
 
@@ -23,67 +26,190 @@ void destroy_via(via_state *h) {
 }
 
 void via_set_register(via_state *h, unsigned int reg, uint8_t val) {
-  h->regs[reg] = val;
+  switch (reg) {
+    case VIAREG_ORB:
+      // CPU write to Port B. Update h->port_b.
+      h->regs[reg] = val;
+      via_write_port(h->regs[VIAREG_DDRB], h->regs[reg], &(h->port_b));
+      break;
+    case VIAREG_ORA:
+      // CPU write to Port A. Update h->port_a.
+      h->regs[reg] = val;
+      via_write_port(h->regs[VIAREG_DDRA], h->regs[reg], &(h->port_a));
+      break;
+    case VIAREG_T1CL:
+      // Timer 1 low order counter. Write to latch not counter.
+      h->regs[VIAREG_T1LL] = val;
+      break;
+    case VIAREG_T1CH:
+      // Timer 1 high order counter. Write to latch not counter.
+      h->regs[VIAREG_T1LH] = val;
+      // Then copy latch->counter
+      h->regs[VIAREG_T1CL] = h->regs[VIAREG_T1LL];
+      h->regs[VIAREG_T1CH] = h->regs[VIAREG_T1LH];
+      // And reset timer 1 interrupt flag
+      h->regs[VIAREG_IFR] &= 0xbf; // Turn off bit 6
+      // Clear bit 7 if no other outstanding interrupts
+      if ((h->regs[VIAREG_IFR] & 0x7f) == 0) {
+        h->regs[VIAREG_IFR] = 0;
+      }
+      break;
+    case VIAREG_T2CH:
+      // Timer 2 high order counter
+      h->regs[reg] = val;
+      // And reset timer 2 interrupt flag
+      h->regs[VIAREG_IFR] &= 0xdf; // Turn off bit 5
+      // Clear bit 7 if no other outstanding interrupts
+      if ((h->regs[VIAREG_IFR] & 0x7f) == 0) {
+        h->regs[VIAREG_IFR] = 0;
+      }
+      break;
+    case VIAREG_IER:
+      // When writing to the interrupt enable register, bit 7 controls
+      // whether the other bits mean set or clear.
+      if (val < 128) {
+        // Bit seven clear. Flip all bits.
+        val = ~val;
+      }
+      h->regs[reg] = val;
+    default:
+      h->regs[reg] = val;
+  }
 }
 
 uint8_t via_get_register(via_state *h, unsigned int reg) {
+  switch (reg) {
+    case VIAREG_IRB:
+      // CPU read from Port B. Update VIAREG_IRB.
+      via_read_port(h->regs[VIAREG_DDRB], &(h->regs[reg]), h->port_b);
+      break;
+    case VIAREG_IRA:
+      // CPU read from Port A. Update VIAREG_IRA.
+      via_read_port(h->regs[VIAREG_DDRA], &(h->regs[reg]), h->port_a);
+      break;
+    case VIAREG_T1CL:
+      // Timer 1 low order counter. Reset T1 interrupt flag.
+      h->regs[VIAREG_IFR] &= 0xbf; // Turn off bit 6
+      // Clear bit 7 if no other outstanding interrupts
+      if ((h->regs[VIAREG_IFR] & 0x7f) == 0) {
+        h->regs[VIAREG_IFR] = 0;
+      }
+      break;
+    case VIAREG_T2CL:
+      // Timer 2 low order counter. Reset T2 interrupt flag.
+      h->regs[VIAREG_IFR] &= 0xdf; // Turn off bit 5
+      // Clear bit 7 if no other outstanding interrupts
+      if ((h->regs[VIAREG_IFR] & 0x7f) == 0) {
+        h->regs[VIAREG_IFR] = 0;
+      }
+      break;
+  }
   return h->regs[reg];
 }
 
-void via_process(via_state *h) {
-
-  // Handle I/O for Port A
-  uint8_t direction = h->regs[VIAREG_DDRA]; // Data direction register
-  uint8_t reg       = h->regs[VIAREG_ORA];  // ORA/IRA are same register
+// Handle CPU writing to Port A or Port B
+// Params: direction - direction register [IN]
+//         reg - output register value [IN]
+//         port - output port [OUT]
+void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port) {
   for (unsigned int i = 0; i < 8; ++i) {
     if (direction & 0x01) {
       // Output pin
       if (reg & 0x01) {
-        h->port_a |= 0x01;
+        *port |= 0x01;
       } else {
-        h->port_a &= 0xfe;
-      }
-    } else {
-      // Input pin
-      if (h->port_a & 0x01) {
-        reg |= 0x01;
-      } else {
-        reg &= 0xfe;
+        *port &= 0xfe;
       }
     }
     direction >>= 2;
     reg       >>= 2;
-    h->port_a >>= 2;
+    *port     >>= 2;
   }
-  h->regs[VIAREG_ORA] = reg;  
-
-  // Handle I/O for Port B
-  direction = h->regs[VIAREG_DDRB]; // Data direction register
-  reg       = h->regs[VIAREG_ORB];  // ORB/IRB are same register
-  for (unsigned int i = 0; i < 8; ++i) {
-    if (direction & 0x01) {
-      // Output pin
-      if (reg & 0x01) {
-        h->port_b |= 0x01;
-      } else {
-        h->port_b &= 0xfe;
-      }
-    } else {
-      // Input pin
-      if (h->port_b & 0x01) {
-        reg |= 0x01;
-      } else {
-        reg &= 0xfe;
-      }
-    }
-    direction >>= 2;
-    reg       >>= 2;
-    h->port_b >>= 2;
-  }  
-  h->regs[VIAREG_ORB] = reg;  
-
 }
 
+// Handle CPU reading from Port A or Port B
+// Params: direction - direction register [IN]
+//         reg - output register value [OUT]
+//         port - output port [IN]
+void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port) {
+  for (unsigned int i = 0; i < 8; ++i) {
+    if (!(direction & 0x01)) {
+      // Input pin
+      if (port & 0x01) {
+        *reg |= 0x01;
+      } else {
+        *reg &= 0xfe;
+      }
+    }
+    direction >>= 2;
+    *reg      >>= 2;
+    port      >>= 2;
+  }
+}
 
+// Called every clock cycle
+void via_clk(via_state *h) {
+  // Decrement timer 1
+  if(--h->regs[VIAREG_T1CL] == 0xff) {
+    --h->regs[VIAREG_T1CH];
+  }
+  // Check if expired
+  if ((h->regs[VIAREG_T1CL] == 0) && (h->regs[VIAREG_T1CH] == 0)) {
+    via_timer1_expire(h);
+  }
+  // Decrement timer 2
+  if(--h->regs[VIAREG_T2CL] == 0xff) {
+    --h->regs[VIAREG_T2CH];
+  }
+  // Check if expired
+  if ((h->regs[VIAREG_T2CL] == 0) && (h->regs[VIAREG_T2CH] == 0)) {
+    via_timer2_expire(h);
+  }
+}
+
+// Called when timer 1 expires
+// Handles one-shot and continuous mode
+void via_timer1_expire(via_state *h) {
+
+  // If we are in continuous mode, rearm the timer
+  if (h->regs[VIAREG_ACR] & 0x40) {
+    // Copy latch->counter
+    h->regs[VIAREG_T1CL] = h->regs[VIAREG_T1LL];
+    h->regs[VIAREG_T1CH] = h->regs[VIAREG_T1LH];
+  }
+
+  // Bit 6 of the Aux Control Register determines mode
+  // If we are in continuous mode, OR if the interrupt flag is not asserted yet
+  if ((h->regs[VIAREG_ACR] & 0x40) || ((h->regs[VIAREG_IFR] & 0x40) == 0)) {
+    // Set T1 interrupt flag.
+    h->regs[VIAREG_IFR] |= 0x40; // Turn on bit 6
+    h->regs[VIAREG_IFR] |= 0x80; // Turn on bit 7 (any interrupt)
+    // If Interrupt Enable Register Bit 6 is set, then assert the interrupt
+    if (h->regs[VIAREG_IER] & 0x40) {
+      via_interrupt();
+    }
+  }
+}
+
+// Called when timer 2 expires
+// NOTE: We do not support pulse-counting mode, because PB6 is not utilized.
+//       So there is only one-shot mode to consider for timer 2.
+void via_timer2_expire(via_state *h) {
+  // If the interrupt flag is not asserted yet
+  if ((h->regs[VIAREG_IFR] & 0x20) == 0) {
+    // Set T1 interrupt flag.
+    h->regs[VIAREG_IFR] |= 0x20; // Turn on bit 5
+    h->regs[VIAREG_IFR] |= 0x80; // Turn on bit 7 (any interrupt)
+    // If Interrupt Enable Register Bit 5 is set, then assert the interrupt
+    if (h->regs[VIAREG_IER] & 0x20) {
+      via_interrupt();
+    }
+  }
+}
+
+// Called when the VIA wants to raise an IRQ
+void via_interrupt() {
+  // TODO: Wire this up
+}
 
 

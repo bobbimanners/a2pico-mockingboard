@@ -32,7 +32,7 @@
 #define VIAREG_ORA  1   // Output register A
 #define VIAREG_IRA  1   // Input register A
 #define VIAREG_DDRB 2   // Data direction register B
-#define VIAREG_DDRA 3   // Data direction register B
+#define VIAREG_DDRA 3   // Data direction register A
 #define VIAREG_T1CL 4   // Timer 1 low order latches / counter
 #define VIAREG_T1CH 5   // Timer 1 high order counter
 #define VIAREG_T1LL 6   // Timer 1 low order latches
@@ -66,7 +66,14 @@ void destroy_via(via_state *h);
 
 void via_set_register(via_state *h, unsigned int reg, uint8_t val);
 uint8_t via_get_register(via_state *h, unsigned int reg);
-void via_process(via_state *h);
+void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port);
+void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port);
+void via_clk(via_state *h);
+void via_timer1_expire(via_state *h);
+void via_timer2_expire(via_state *h);
+void via_interrupt();
+
+
 
 
 
