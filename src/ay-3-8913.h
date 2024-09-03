@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "wdc6522.h"
 
 #define AY3_SAMPLES 1024
 #define AY3_QUANTUM_MILLISECS 25
@@ -16,6 +17,7 @@
 // State of AY-3-8913
 typedef struct {
   uint8_t regs[16];
+  uint8_t selected; // Selected register
 
   // Buffers for three tone channels + noise
   uint8_t tone[3][AY3_SAMPLES];
@@ -46,6 +48,7 @@ typedef struct {
 ay3_state *create_ay3();
 void destroy_ay3(ay3_state *h);
 
+void ay3_clk(ay3_state *h, via_state *via);
 void ay3_set_register(ay3_state *h, unsigned int reg, uint8_t val);
 uint8_t ay3_get_register(ay3_state *h, unsigned int reg);
 void ay3_process(ay3_state *h);

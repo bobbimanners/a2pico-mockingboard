@@ -21,6 +21,7 @@ ay3_state *create_ay3() {
     h->tone_state.counter[i]  = 1;
     h->tone_state.signal[i]   = 0;
   }
+  h->selected = 0;
   h->noise_state.counter = 1;
   h->noise_state.signal  = 1;
   memset(h->output, 0, AY3_SAMPLES);
@@ -30,6 +31,37 @@ ay3_state *create_ay3() {
 
 void destroy_ay3(ay3_state *h) {
   free(h);
+}
+
+void ay3_clk(ay3_state *h, via_state *via) {
+  // Mockingboard PCB:
+  // Port A of VIA is wired directly to AY3 databus D0..D7.
+  // Port B of VIA is wired as follows:
+  //  PB0 -> BC1
+  //  PB1 -> BDIR
+  //  PB2 -> RESET'
+  uint8_t bc1   = via->port_b & 0x01;
+  uint8_t bdir  = via->port_b & 0x02;
+  uint8_t reset = via->port_b & 0x04;
+
+  // AY3 Interface logic is as follows:
+  //  BDIR BC1
+  //  ---------------------------
+  //  0    0     Inactive
+  //  0    1     Read from AY3
+  //  1    0     Write to AY3
+  //  1    1     Latch register address
+  if ((bdir == 0) && (bc1 != 0)) {
+    // Read register
+    uint8_t val = ay3_get_register(h, h->selected);
+    // TODO: Do something with val!
+  } else if ((bdir != 1) && (bc1 == 0)) {
+    // Write register
+    ay3_set_register(h, h->selected, via->port_a);
+  } else {
+    // Latch register
+    h->selected = via->port_a;
+  }
 }
 
 void ay3_set_register(ay3_state *h, unsigned int reg, uint8_t val) {
