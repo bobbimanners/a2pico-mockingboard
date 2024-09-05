@@ -18,8 +18,7 @@
 // - So we don't need read or write handshaking on port A either for now, and
 //   we will completely ignore VIAREG_PCR since no CA1/2,CB1/2. Will
 //   need to implement the CA1 support when we add SSI capability later on.
-// - 
-
+//
 
 #pragma once
 
@@ -51,6 +50,11 @@
 typedef struct {
   uint8_t regs[16];
 
+  bool    cs1;    // Chip select 1 (CS1)
+  bool    cs2b;   // Chip select 2 (CS2' active low)
+  bool    rwb;    // RW' (active low)
+  uint8_t rs;     // Register select (RS3..RS0, value 0..15)
+
   uint8_t port_a; // Mockingboard: Connects to/from AY-3-8913 databus (DA0..DA7)
   uint8_t port_b; // Mockingboard: 3 bits to AY-3-8913 (PB0-BC1, PB1-BDIR, PB2-RESET)
   bool    ca1;    // Mockingboard: Only used if SSI-263 speech chip installed (A/R')
@@ -61,18 +65,22 @@ typedef struct {
   
 } via_state;
 
+// Create an instance of the VIA 6522
+// Returns VIA handle.
 via_state *create_via();
+
+// Destroy an instance of the VIA 6522
+// Param: h - VIA handle
 void destroy_via(via_state *h);
 
-void via_set_register(via_state *h, unsigned int reg, uint8_t val);
-uint8_t via_get_register(via_state *h, unsigned int reg);
-void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port);
-void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port);
-void via_clk(via_state *h);
-void via_timer1_expire(via_state *h);
-void via_timer2_expire(via_state *h);
-void via_interrupt();
-
+// Called on every clock
+// Param: h    - VIA handle
+//        cs1  - Chip select 1
+//        cs2b - Chip select 2 (active low)
+//        rwb  - Read / notwrite
+//        rs   - Register select (pins RS3..RS0)
+//        data - Data bus
+void via_clk(via_state *h, bool cs1, bool cs2b, bool rwb, uint8_t rs, uint8_t data);
 
 
 

@@ -8,6 +8,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Prototypes for private functions
+static void via_set_register(via_state *h, unsigned int reg, uint8_t val);
+static uint8_t via_get_register(via_state *h, unsigned int reg);
+static void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port);
+static void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port);
+static void via_timer1_expire(via_state *h);
+static void via_timer2_expire(via_state *h);
+static void via_interrupt();
+
+
 via_state *create_via() {
   via_state *h = malloc(sizeof(via_state));
   if (!h) {
@@ -25,7 +35,35 @@ void destroy_via(via_state *h) {
   free(h);
 }
 
-void via_set_register(via_state *h, unsigned int reg, uint8_t val) {
+void via_clk(via_state *h, bool cs1, bool cs2b, bool rwb, uint8_t rs, uint8_t data) {
+  // Decrement timer 1
+  if(--h->regs[VIAREG_T1CL] == 0xff) {
+    --h->regs[VIAREG_T1CH];
+  }
+  // Check if expired
+  if ((h->regs[VIAREG_T1CL] == 0) && (h->regs[VIAREG_T1CH] == 0)) {
+    via_timer1_expire(h);
+  }
+  // Decrement timer 2
+  if(--h->regs[VIAREG_T2CL] == 0xff) {
+    --h->regs[VIAREG_T2CH];
+  }
+  // Check if expired
+  if ((h->regs[VIAREG_T2CL] == 0) && (h->regs[VIAREG_T2CH] == 0)) {
+    via_timer2_expire(h);
+  }
+
+  if (cs1 && !cs2b) {
+    // Chip is selected ...
+    if (rwb) {
+      via_set_register(h, rs, data);
+    } else {
+      data = via_get_register(h, rs);
+    }
+  }
+}
+
+static void via_set_register(via_state *h, unsigned int reg, uint8_t val) {
   switch (reg) {
     case VIAREG_ORB:
       // CPU write to Port B. Update h->port_b.
@@ -73,11 +111,12 @@ void via_set_register(via_state *h, unsigned int reg, uint8_t val) {
       }
       h->regs[reg] = val;
     default:
+      printf("VIA: setting R%d to 0x%x\n", reg, val);
       h->regs[reg] = val;
   }
 }
 
-uint8_t via_get_register(via_state *h, unsigned int reg) {
+static uint8_t via_get_register(via_state *h, unsigned int reg) {
   switch (reg) {
     case VIAREG_IRB:
       // CPU read from Port B. Update VIAREG_IRB.
@@ -109,67 +148,23 @@ uint8_t via_get_register(via_state *h, unsigned int reg) {
 
 // Handle CPU writing to Port A or Port B
 // Params: direction - direction register [IN]
-//         reg - output register value [IN]
-//         port - output port [OUT]
-void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port) {
-  for (unsigned int i = 0; i < 8; ++i) {
-    if (direction & 0x01) {
-      // Output pin
-      if (reg & 0x01) {
-        *port |= 0x01;
-      } else {
-        *port &= 0xfe;
-      }
-    }
-    direction >>= 2;
-    reg       >>= 2;
-    *port     >>= 2;
-  }
+//         reg - register value to output [IN]
+//         port - pointer to output port to update [OUT]
+static void via_write_port(uint8_t direction, uint8_t reg, uint8_t *port) {
+  *port = (reg & direction) | (*port & ~direction);
 }
 
 // Handle CPU reading from Port A or Port B
 // Params: direction - direction register [IN]
-//         reg - output register value [OUT]
+//         reg - pointer to register to update [OUT]
 //         port - output port [IN]
-void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port) {
-  for (unsigned int i = 0; i < 8; ++i) {
-    if (!(direction & 0x01)) {
-      // Input pin
-      if (port & 0x01) {
-        *reg |= 0x01;
-      } else {
-        *reg &= 0xfe;
-      }
-    }
-    direction >>= 2;
-    *reg      >>= 2;
-    port      >>= 2;
-  }
-}
-
-// Called every clock cycle
-void via_clk(via_state *h) {
-  // Decrement timer 1
-  if(--h->regs[VIAREG_T1CL] == 0xff) {
-    --h->regs[VIAREG_T1CH];
-  }
-  // Check if expired
-  if ((h->regs[VIAREG_T1CL] == 0) && (h->regs[VIAREG_T1CH] == 0)) {
-    via_timer1_expire(h);
-  }
-  // Decrement timer 2
-  if(--h->regs[VIAREG_T2CL] == 0xff) {
-    --h->regs[VIAREG_T2CH];
-  }
-  // Check if expired
-  if ((h->regs[VIAREG_T2CL] == 0) && (h->regs[VIAREG_T2CH] == 0)) {
-    via_timer2_expire(h);
-  }
+static void via_read_port(uint8_t direction, uint8_t *reg, uint8_t port) {
+  *reg = (port & ~direction) | (*reg & direction);
 }
 
 // Called when timer 1 expires
 // Handles one-shot and continuous mode
-void via_timer1_expire(via_state *h) {
+static void via_timer1_expire(via_state *h) {
 
   // Bit 6 of the Aux Control Register determines mode
   // If we are in continuous mode, rearm the timer
@@ -194,7 +189,7 @@ void via_timer1_expire(via_state *h) {
 // Called when timer 2 expires
 // NOTE: We do not support pulse-counting mode, because PB6 is not utilized.
 //       So there is only one-shot mode to consider for timer 2.
-void via_timer2_expire(via_state *h) {
+static void via_timer2_expire(via_state *h) {
   // If the Timer 2 interrupt flag is not asserted yet
   if ((h->regs[VIAREG_IFR] & 0x20) == 0) {
     // Set Timer 2 interrupt flag.
@@ -208,7 +203,7 @@ void via_timer2_expire(via_state *h) {
 }
 
 // Called when the VIA wants to raise an IRQ
-void via_interrupt() {
+static void via_interrupt() {
   // TODO: Wire this up
 }
 

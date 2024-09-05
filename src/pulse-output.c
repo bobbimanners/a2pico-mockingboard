@@ -19,47 +19,40 @@
  
 #define BUFSIZE 1024
 
-#include <sys/ioctl.h>
-#include <termios.h>
-
-// Stolen from
-// https://stackoverflow.com/questions/29335758/using-kbhit-and-getch-on-linux
-char kbhit() {
-    struct termios term;
-    tcgetattr(0, &term);
-
-    struct termios term2 = term;
-    term2.c_lflag &= ~ICANON;
-    tcsetattr(0, TCSANOW, &term2);
-
-    int byteswaiting;
-    ioctl(0, FIONREAD, &byteswaiting);
-
-    tcsetattr(0, TCSANOW, &term);
-
-    return byteswaiting > 0;
-}
-
-void show_ay3_regs(ay3_state *ay3) {
-  printf("\n\n");
-  for (unsigned int i = 0; i < 16; ++i) {
-    unsigned int val;
-    val = ay3_get_register(ay3, i);
-    printf("R%u\t%u (0x%x)\n", i, val , val);
-  }
-}
- 
 int main(int argc, char*argv[]) {
 
     /* The Sample format to use */
     static const pa_sample_spec ss = {
         .format = PA_SAMPLE_U8,
         .rate = AY3_SAMPLERATE,
-        .channels = 2
+        .channels = 1
     };
  
-    ay3_state *ay3 = create_ay3();
- 
+    via_state *via1 = create_via();
+    ay3_state *ay3_1= create_ay3();
+
+    // Set up VIA for output
+    via_clk(via1, true, false, true, VIAREG_DDRA, 0xff);
+    via_clk(via1, true, false, true, VIAREG_DDRB, 0xff);
+
+    // Load AY-3-8913 registers using the VIA 6522
+    uint8_t regvals[] = {20, 0, 30, 0, 40, 0, 2, 0, 10, 15, 15, 0, 0, 0, 0, 0};
+    for (uint8_t rs = 0; rs < 16; ++rs) {
+      //            cs1   cs2b   rwb   rs          data
+      via_clk(via1, true, false, true, VIAREG_ORB, 0b100); // AY3 inactive
+      ay3_clk(ay3_1, via1);
+      via_clk(via1, true, false, true, VIAREG_ORA, rs);    // Register number
+      ay3_clk(ay3_1, via1);
+      via_clk(via1, true, false, true, VIAREG_ORB, 0b111); // Latch register
+      ay3_clk(ay3_1, via1);
+      via_clk(via1, true, false, true, VIAREG_ORB, 0b100); // AY3 inactive
+      ay3_clk(ay3_1, via1);
+      via_clk(via1, true, false, true, VIAREG_ORA, regvals[rs]); // Register data
+      ay3_clk(ay3_1, via1);
+      via_clk(via1, true, false, true, VIAREG_ORB, 0b110); // Write register
+      ay3_clk(ay3_1, via1);
+    }
+
     pa_simple *s = NULL;
     int ret = 1;
     int error;
@@ -70,25 +63,6 @@ int main(int argc, char*argv[]) {
         goto finish;
     }
 
-    ay3_set_register(ay3, 0, 128);
-    ay3_set_register(ay3, 1, 128);
-    ay3_set_register(ay3, 2, 200);
-    ay3_set_register(ay3, 3, 200);
-    ay3_set_register(ay3, 4, 50);
-    ay3_set_register(ay3, 5, 50);
-    ay3_set_register(ay3, 6, 0);
-    ay3_set_register(ay3, 7, 0);
-    ay3_set_register(ay3, 8, 0x0f);
-    ay3_set_register(ay3, 9, 0x0f);
-    ay3_set_register(ay3, 10, 0x0f);
-    ay3_set_register(ay3, 11, 0);
-    ay3_set_register(ay3, 12, 0);
-    ay3_set_register(ay3, 13, 0);
-    ay3_set_register(ay3, 14, 0);
-    ay3_set_register(ay3, 15, 0);
-
-    show_ay3_regs(ay3);
- 
     for (;;) {
 #if 0
         pa_usec_t latency;
@@ -101,26 +75,15 @@ int main(int argc, char*argv[]) {
         fprintf(stderr, "%0.0f usec    \r", (float)latency);
 #endif
 
-        if (kbhit()) {
-          unsigned int reg, val;
-          do {
-            printf("\nAY3 Reg [0..15 ] > ");
-            scanf("%u", &reg);
-          } while (reg > 15);
-          do {
-            printf("    Val [0..255] > ");
-            scanf("%u", &val);
-          } while (val > 255);
-          printf("Setting R%u to %u ...\n", reg, val);
-          ay3_set_register(ay3, reg, val);
-          show_ay3_regs(ay3);
+        for (unsigned int i = 0; i < 16 * AY3_SAMPLES; ++i) {
+          /* Crank the handle */
+          //            cs1   cs2b   rwb   rs  data
+          via_clk(via1, true, false, true, 0, 0b100); // AY3 inactive
+          ay3_clk(ay3_1, via1);
         }
-
-        /* Generate some data ... */ 
-        ay3_process(ay3);
  
         /* ... and play it */
-        if (pa_simple_write(s, ay3->output, (size_t) AY3_SAMPLES, &error) < 0) {
+        if (pa_simple_write(s, ay3_1->output, (size_t) AY3_SAMPLES, &error) < 0) {
             fprintf(stderr, __FILE__": pa_simple_write() failed: %s\n", pa_strerror(error));
             goto finish;
         }
