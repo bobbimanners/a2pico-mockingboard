@@ -133,13 +133,9 @@ static void ay3_gen_tone(ay3_state *h) {
   for (unsigned int ch = 0; ch < 3; ++ch) {
     if (--h->tone_state.counter[ch] == 0) {
       // Period of square wave to generate in terms of cycles of (CLOCKSPEED/16)
-      unsigned int period[] = {h->regs[0] + ((h->regs[1] & 0x0f) << 8),
-                               h->regs[2] + ((h->regs[3] & 0x0f) << 8),
-                               h->regs[4] + ((h->regs[5] & 0x0f) << 8)};
-      h->tone_state.counter[ch] = period[ch];
+      h->tone_state.counter[ch] = h->regs[ch*2] + ((h->regs[ch*2+1] & 0x0f) << 8);
       h->tone_state.signal[ch] = (h->tone_state.signal[ch] == 0 ? 1 : 0);
     }
-    h->tone[ch] = h->tone_state.signal[ch];
   }
 }
 
@@ -151,20 +147,19 @@ static void ay3_gen_noise(ay3_state *h) {
     h->noise_state.counter = noise_period;
     h->noise_state.signal = rand() & 0x01;
   }
-  h->noise = h->noise_state.signal;
 }
 
 // Mix the three tone channels plus noise, called every 16th clock
 static void ay3_mix(ay3_state *h) {
 
   unsigned int en = h->regs[7];
-  unsigned int tone_en[]  = {(en & 0x01) >> 0, (en & 0x02) > 1, (en & 0x04) > 2};
-  unsigned int noise_en[] = {(en & 0x08) >> 3, (en & 0x10) > 4, (en & 0x20) > 5};
+  unsigned int tone_en[]  = {(en & 0x01) >> 0, (en & 0x02) >> 1, (en & 0x04) >> 2};
+  unsigned int noise_en[] = {(en & 0x08) >> 3, (en & 0x10) >> 4, (en & 0x20) >> 5};
 
   for (unsigned int ch = 0; ch < 3; ++ch) {
     unsigned int t_en = (tone_en[ch]  == 0 ? 1 : 0);
     unsigned int n_en = (noise_en[ch] == 0 ? 1 : 0);
-    h->tone[ch] = t_en * h->tone[ch] + n_en * h->noise;
+    h->tone_state.signal[ch] = t_en * h->tone_state.signal[ch] + n_en * h->noise_state.signal;
   }
 }
 
@@ -251,16 +246,16 @@ static void ay3_envelope_ampl(ay3_state *h) {
 
   for (unsigned int ch = 0; ch < 3; ++ch) {
     if (mode[ch] == 0) {
-      h->tone[ch] *= ampl[ch];
+      h->tone_state.signal[ch] *= ampl[ch];
     } else {
-      h->tone[ch] *= h->envelope_state.envelope_value;
+      h->tone_state.signal[ch] *= h->envelope_state.envelope_value;
     }
   }
 }
 
 // Output the combined signal to output[], called every 1/16th clock
 static void ay3_combine(ay3_state *h) {
-  h->output[h->idx++] = (h->tone[0] + h->tone[1] + h->tone[2]) * 100;
+  h->output[h->idx++] = (h->tone_state.signal[0] + h->tone_state.signal[1] + h->tone_state.signal[2]) * 100;
   if (h->idx >= AY3_SAMPLES) {
     h->idx = 0;
   }

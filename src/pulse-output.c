@@ -36,7 +36,7 @@ int main(int argc, char*argv[]) {
     via_clk(via1, true, false, true, VIAREG_DDRB, 0xff);
 
     // Load AY-3-8913 registers using the VIA 6522
-    uint8_t regvals[] = {20, 0, 30, 0, 40, 0, 2, 0, 10, 15, 15, 0, 0, 0, 0, 0};
+    uint8_t regvals[] = {160, 0, 80, 0, 40, 0, 2, 0, 15, 15, 15, 0, 0, 0, 0, 0};
     for (uint8_t rs = 0; rs < 16; ++rs) {
       //            cs1   cs2b   rwb   rs          data
       via_clk(via1, true, false, true, VIAREG_ORB, 0b100); // AY3 inactive

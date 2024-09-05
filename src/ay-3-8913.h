@@ -24,10 +24,6 @@ typedef struct {
   uint8_t regs[16];
   uint8_t selected; // Selected register
 
-  // Buffers for three tone channels + noise
-  uint8_t tone[3];
-  uint8_t noise;
-
   // Output buffer
   uint8_t output[AY3_SAMPLES];
 
