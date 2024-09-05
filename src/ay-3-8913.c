@@ -90,9 +90,11 @@ static void ay3_reset(ay3_state *h) {
   h->selected = 0;
   h->idx = 0;
   for (unsigned int ch = 0; ch < 3; ++ch) {
+    h->tone_state.period[ch]  = 4095;
     h->tone_state.counter[ch] = 1;
-    h->tone_state.signal[ch] = 0;
+    h->tone_state.signal[ch]  = 0;
   }
+  h->noise_state.period  = 31;
   h->noise_state.counter = 1;
   h->noise_state.signal  = 0;
   memset(h->output, 0, AY3_SAMPLES);
@@ -199,8 +201,6 @@ static void reset_envelope_generator(ay3_state *h) {
 //         period - envelope period in cycles of (CLOCKSPEED/256)
 static uint8_t envelope_generator(ay3_state *h, unsigned int shape, unsigned int period) {
 
-  return; // DEBUG FOR NOW
-
   // Decode the shape
   unsigned int env_continue  = (shape & 0x08) >> 3;
   unsigned int env_attack    = (shape & 0x04) >> 2;
@@ -208,12 +208,12 @@ static uint8_t envelope_generator(ay3_state *h, unsigned int shape, unsigned int
   unsigned int env_hold      = (shape & 0x01);
 
   if (--h->envelope_state.remaining == 0) {
-    h->envelope_state.remaining = period;
+    h->envelope_state.remaining = period + 1;
     ++h->envelope_state.period_counter;
   }
 
-  // Step 0..15 of the envelope pattern
-  unsigned int step = (period - h->envelope_state.remaining) * 16 / period;
+  // Divide the period up into 16 segments
+  unsigned int step = (period - h->envelope_state.remaining) * 16 / (period + 1);
 
   if (h->envelope_state.period_counter == 1) {
     // Within the first period, the only param that matters is the attack
