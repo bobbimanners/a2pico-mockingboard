@@ -32,15 +32,19 @@ typedef struct {
 
   // Interal state of tone generator
   struct {
-    unsigned int counter[3];  // Will be reset on first use below
+    unsigned int period[3];   // Period in terms of CLOCKSPEED/16
+    unsigned int counter[3];  // Count remaining until flip
     unsigned int signal[3];   // Current signal state high or low
   } tone_state;
 
   // Interal state of noise generator
   struct {
-    unsigned int counter;  // Will be reset on first use below
-    unsigned int signal;   // Current signal state high or low
+    unsigned int period;      // Period in terms of CLOCKSPEED/16
+    unsigned int counter;     // Count remaining until next random value
+    unsigned int signal;      // Current signal state high or low
   } noise_state;
+
+  unsigned int mixed[3];      // Mix of tone & noise
 
   // Internal state of envelope generator
   struct {

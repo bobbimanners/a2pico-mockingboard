@@ -30,11 +30,10 @@ ay3_state *create_ay3() {
     printf("Alloc fail!");
     exit(999);
   }
-  srand(time(NULL));
-  for (unsigned int i = 0; i < 3; ++i) {
-    h->tone_state.counter[i]  = 1;
-    h->tone_state.signal[i]   = 0;
+  for (unsigned int i = 0; i < 16; ++i) {
+    h->regs[i] = 0;
   }
+  srand(time(NULL));
   ay3_reset(h);
   return h;
 }
@@ -103,9 +102,37 @@ static void ay3_reset(ay3_state *h) {
 static void ay3_set_register(ay3_state *h, unsigned int reg, uint8_t val) {
   printf("AY3: Setting R%d to 0x%x\n", reg, val);
   h->regs[reg] = val;
-  if (reg == 15) {
-    // Write to R15 (Envelope Shape/Cycle) resets the envelope generator
-    reset_envelope_generator(h);
+  switch (reg) {
+    case 0:
+    case 1:
+      // Changing period on channel A - calculate the updated period
+      // and reset tone generator state
+      h->tone_state.period[0] = h->regs[0] + ((h->regs[1] & 0x0f) << 8);
+      h->tone_state.counter[0] = h->tone_state.period[0];
+      break;
+    case 2:
+    case 3:
+      // Changing period on channel B - calculate the updated period
+      // and reset tone generator state
+      h->tone_state.period[1] = h->regs[2] + ((h->regs[3] & 0x0f) << 8);
+      h->tone_state.counter[1] = h->tone_state.period[1];
+      break;
+    case 4:
+    case 5:
+      // Changing period on channel C - calculate the updated period
+      // and reset tone generator state
+      h->tone_state.period[2] = h->regs[4] + ((h->regs[5] & 0x0f) << 8);
+      h->tone_state.counter[2] = h->tone_state.period[2];
+      break;
+    case 6:
+      // Changing period on noise generator - calculate the updated period
+      h->noise_state.period = h->regs[6] & 0x1f;
+      h->noise_state.counter = h->noise_state.period;
+      break;
+    case 15:
+      // Write to R15 (Envelope Shape/Cycle) resets the envelope generator
+      reset_envelope_generator(h);
+      break;
   }
 }
 
@@ -132,9 +159,8 @@ static void ay3_gen_tone(ay3_state *h) {
 
   for (unsigned int ch = 0; ch < 3; ++ch) {
     if (--h->tone_state.counter[ch] == 0) {
-      // Period of square wave to generate in terms of cycles of (CLOCKSPEED/16)
-      h->tone_state.counter[ch] = h->regs[ch*2] + ((h->regs[ch*2+1] & 0x0f) << 8);
-      h->tone_state.signal[ch] = (h->tone_state.signal[ch] == 0 ? 1 : 0);
+      h->tone_state.counter[ch] = h->tone_state.period[ch];
+      h->tone_state.signal[ch] = ((h->tone_state.signal[ch] == 0) ? 1 : 0);
     }
   }
 }
@@ -142,9 +168,7 @@ static void ay3_gen_tone(ay3_state *h) {
 // Single channel PRNG noise generator, called every 16th clock
 static void ay3_gen_noise(ay3_state *h) {
   if (--h->noise_state.counter == 0) {
-    // Period of noise wave to generate in terms of cycles of (CLOCKSPEED/16)
-    unsigned int noise_period = h->regs[6] & 0x1f;
-    h->noise_state.counter = noise_period;
+    h->noise_state.counter = h->noise_state.period;
     h->noise_state.signal = rand() & 0x01;
   }
 }
@@ -159,7 +183,7 @@ static void ay3_mix(ay3_state *h) {
   for (unsigned int ch = 0; ch < 3; ++ch) {
     unsigned int t_en = (tone_en[ch]  == 0 ? 1 : 0);
     unsigned int n_en = (noise_en[ch] == 0 ? 1 : 0);
-    h->tone_state.signal[ch] = t_en * h->tone_state.signal[ch] + n_en * h->noise_state.signal;
+    h->mixed[ch] = t_en * h->tone_state.signal[ch] + n_en * h->noise_state.signal;
   }
 }
 
@@ -246,16 +270,16 @@ static void ay3_envelope_ampl(ay3_state *h) {
 
   for (unsigned int ch = 0; ch < 3; ++ch) {
     if (mode[ch] == 0) {
-      h->tone_state.signal[ch] *= ampl[ch];
+      h->mixed[ch] *= ampl[ch];
     } else {
-      h->tone_state.signal[ch] *= h->envelope_state.envelope_value;
+      h->mixed[ch] *= h->envelope_state.envelope_value;
     }
   }
 }
 
 // Output the combined signal to output[], called every 1/16th clock
 static void ay3_combine(ay3_state *h) {
-  h->output[h->idx++] = (h->tone_state.signal[0] + h->tone_state.signal[1] + h->tone_state.signal[2]) * 100;
+  h->output[h->idx++] = (h->mixed[0] + h->mixed[1] + h->mixed[2]) * 10;
   if (h->idx >= AY3_SAMPLES) {
     h->idx = 0;
   }
