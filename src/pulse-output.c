@@ -55,10 +55,10 @@ int main(int argc, char*argv[]) {
                          0, 4,   // Tone C period (fine, coarse)
                          30,     // Noise period
                          0xf8,   // Mixer enable
-                         16,     // Volume A
-                         0,     // Volume B
+                         0,     // Volume A
+                         16,     // Volume B
                          0,     // Volume C
-                         0, 1,   // Envelope period (fine, coarse)
+                         0, 6,   // Envelope period (fine, coarse)
                          0b1110,      // Envelope shape
                          0,      // I/O Port A data - not used
                          0       // I/O Port B data - not used

@@ -1,7 +1,7 @@
 all: pulse-test
 
-pulse-test: pulse-output.c ay-3-8913.c ay-3-8913.h wdc6522.c wdc6522.h
-	gcc -Wall -g -o pulse-test pulse-output.c ay-3-8913.c wdc6522.c -lpulse -lpulse-simple
+pulse-test: src/pulse-output.c src/ay-3-8913.c src/ay-3-8913.h src/wdc6522.c src/wdc6522.h
+	gcc -Wall -g -o pulse-test src/pulse-output.c src/ay-3-8913.c src/wdc6522.c -lpulse -lpulse-simple
 
 clean:
 	rm -f *.o
