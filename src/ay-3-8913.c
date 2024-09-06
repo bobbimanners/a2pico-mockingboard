@@ -215,7 +215,7 @@ static uint8_t envelope_generator(ay3_state *h) {
   }
 
   // Divide the period up into 16 segments
-  unsigned int step = (period - h->envelope_state.remaining) * 16 / (period + 1);
+  unsigned int step = (period + 1 - h->envelope_state.remaining) * 16 / (period + 1);
 
   if (h->envelope_state.period_counter == 1) {
     // Within the first period, the only param that matters is the attack

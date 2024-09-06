@@ -9,9 +9,9 @@
 #include <stdint.h>
 #include "wdc6522.h"
 
-#define AY3_SAMPLES 1024           // Number of samples to buffer
-#define AY3_SAMPLERATE 48000       // 48kHz output
+#define AY3_SAMPLES 4096           // Number of samples to buffer
 #define CLOCKSPEED 1020500         // Host CPU clock
+#define AY3_SAMPLERATE (CLOCKSPEED/16)
 
 //
 // We generate a sample of output every 16 clocks
