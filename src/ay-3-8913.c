@@ -19,7 +19,7 @@ static void ay3_gen_noise(ay3_state *h);
 static void ay3_gen_tone(ay3_state *h);
 static void ay3_mix(ay3_state *h);
 static void reset_envelope_generator(ay3_state *h);
-static uint8_t envelope_generator(ay3_state *h, unsigned int shape, unsigned int period);
+static uint8_t envelope_generator(ay3_state *h);
 static void ay3_envelope_ampl(ay3_state *h);
 static void ay3_combine(ay3_state *h);
 
@@ -197,9 +197,11 @@ static void reset_envelope_generator(ay3_state *h) {
 }
 
 // Generate amplitude envelope, called every 1/256th clock
-// Params: shape  - encodes the shape of the envelope (continue/attack/alternate/hold)
-//         period - envelope period in cycles of (CLOCKSPEED/256)
-static uint8_t envelope_generator(ay3_state *h, unsigned int shape, unsigned int period) {
+static uint8_t envelope_generator(ay3_state *h) {
+
+  // Period of envelope in terms of cycles of (CLOCKSPEED/256)
+  unsigned int period = h->regs[11] + (h->regs[12] << 8);
+  unsigned int shape  = h->regs[13] & 0x0f;
 
   // Decode the shape
   unsigned int env_continue  = (shape & 0x08) >> 3;
@@ -230,7 +232,7 @@ static uint8_t envelope_generator(ay3_state *h, unsigned int shape, unsigned int
       if (env_hold) {
         // Holding ...
         // Value goes high if either attack is true or alternate mode is set, but not both
-        return (env_alternate ^ env_attack);
+        return (env_alternate ^ env_attack) * 15;
       } else {
         // Not holding ...
         if (!env_alternate) {
@@ -261,10 +263,7 @@ static void ay3_envelope_ampl(ay3_state *h) {
 
   // Every 16 calls, update the envelope (16*16 = every 256 clks)
   if ((++callcounter % 16) == 0) {
-    // Period of envelope in terms of cycles of (CLOCKSPEED/256)
-    unsigned int env_period = h->regs[11] + (h->regs[12] << 8);
-    unsigned int env_shape  = h->regs[13] & 0x0f;
-    h->envelope_state.envelope_value = envelope_generator(h, env_shape, env_period);
+    h->envelope_state.envelope_value = envelope_generator(h);
     callcounter = 0;
   }
 

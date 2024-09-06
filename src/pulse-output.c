@@ -36,7 +36,34 @@ int main(int argc, char*argv[]) {
     via_clk(via1, true, false, true, VIAREG_DDRB, 0xff);
 
     // Load AY-3-8913 registers using the VIA 6522
-    uint8_t regvals[] = {64, 0, 0, 1, 0, 4, 30, 0xf8, 15, 15, 15, 0, 0, 0, 0, 0};
+    uint8_t regvals[] = {64, 0,  // Tone A period (fine, coarse)
+                         0, 1,   // Tone B period (fine, coarse)
+                         0, 4,   // Tone C period (fine, coarse)
+                         30,     // Noise period
+                         0xf8,   // Mixer enable
+                         15,     // Volume A
+                         15,     // Volume B
+                         15,     // Volume C
+                         0, 0,   // Envelope period (fine, coarse)
+                         0,      // Envelope shape
+                         0,      // I/O Port A data - not used
+                         0       // I/O Port B data - not used
+                         };
+
+    uint8_t regvals2[] = {64, 0,  // Tone A period (fine, coarse)
+                         0, 1,   // Tone B period (fine, coarse)
+                         0, 4,   // Tone C period (fine, coarse)
+                         30,     // Noise period
+                         0xf8,   // Mixer enable
+                         16,     // Volume A
+                         0,     // Volume B
+                         0,     // Volume C
+                         0, 1,   // Envelope period (fine, coarse)
+                         0b1110,      // Envelope shape
+                         0,      // I/O Port A data - not used
+                         0       // I/O Port B data - not used
+                         };
+
     for (uint8_t rs = 0; rs < 16; ++rs) {
       //            cs1   cs2b   rwb   rs          data
       via_clk(via1, true, false, true, VIAREG_ORB, 0b100); // AY3 inactive
@@ -47,7 +74,7 @@ int main(int argc, char*argv[]) {
       ay3_clk(ay3_1, via1);
       via_clk(via1, true, false, true, VIAREG_ORB, 0b100); // AY3 inactive
       ay3_clk(ay3_1, via1);
-      via_clk(via1, true, false, true, VIAREG_ORA, regvals[rs]); // Register data
+      via_clk(via1, true, false, true, VIAREG_ORA, regvals2[rs]); // Register data
       ay3_clk(ay3_1, via1);
       via_clk(via1, true, false, true, VIAREG_ORB, 0b110); // Write register
       ay3_clk(ay3_1, via1);
